@@ -260,6 +260,7 @@ const artifact_provider_1 = __nccwpck_require__(7171);
 const local_file_provider_1 = __nccwpck_require__(9399);
 const get_annotations_1 = __nccwpck_require__(5867);
 const get_report_1 = __nccwpck_require__(3737);
+const ctest_junit_parser_1 = __nccwpck_require__(8174);
 const dart_json_parser_1 = __nccwpck_require__(4528);
 const dotnet_trx_parser_1 = __nccwpck_require__(2664);
 const java_junit_parser_1 = __nccwpck_require__(676);
@@ -416,6 +417,8 @@ class TestReporter {
     }
     getParser(reporter, options) {
         switch (reporter) {
+            case 'ctest-junit':
+                return new ctest_junit_parser_1.CtestJunitParser(options);
             case 'dart-json':
                 return new dart_json_parser_1.DartJsonParser(options, 'dart');
             case 'dotnet-trx':
@@ -434,6 +437,123 @@ class TestReporter {
     }
 }
 main();
+
+
+/***/ }),
+
+/***/ 8174:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.CtestJunitParser = void 0;
+const xml2js_1 = __nccwpck_require__(6189);
+const node_utils_1 = __nccwpck_require__(5824);
+const path_utils_1 = __nccwpck_require__(4070);
+const test_results_1 = __nccwpck_require__(2768);
+class CtestJunitParser {
+    constructor(options) {
+        this.options = options;
+    }
+    parse(path, content) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const ju = yield this.getJunitReport(path, content);
+            return this.getTestRunResult(path, ju);
+        });
+    }
+    getJunitReport(path, content) {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                return (yield (0, xml2js_1.parseStringPromise)(content));
+            }
+            catch (e) {
+                throw new Error(`Invalid XML at ${path}\n\n${e}`);
+            }
+        });
+    }
+    getTestRunResult(path, junit) {
+        if (junit.testsuite === undefined) {
+            return new test_results_1.TestRunResult(path, [], 0);
+        }
+        const ts = junit.testsuite;
+        const name = ts.$.name.trim();
+        const time = parseFloat(ts.$.time) * 1000;
+        const suite = new test_results_1.TestSuiteResult(name, this.getGroups(ts), time);
+        return new test_results_1.TestRunResult(path, [suite], time);
+    }
+    getGroups(suite) {
+        if (!suite.testcase) {
+            return [];
+        }
+        const groups = [];
+        for (const tc of suite.testcase) {
+            let grp = groups.find(g => g.describe === tc.$.classname);
+            if (grp === undefined) {
+                grp = { describe: tc.$.classname, tests: [] };
+                groups.push(grp);
+            }
+            grp.tests.push(tc);
+        }
+        return groups.map(grp => {
+            const tests = grp.tests.map(tc => {
+                const name = tc.$.name.trim();
+                const result = this.getTestCaseResult(tc);
+                const time = parseFloat(tc.$.time) * 1000;
+                const error = this.getTestCaseError(tc);
+                return new test_results_1.TestCaseResult(name, result, time, error);
+            });
+            return new test_results_1.TestGroupResult(grp.describe, tests);
+        });
+    }
+    getTestCaseResult(test) {
+        if (test.failure)
+            return 'failed';
+        if (test.skipped)
+            return 'skipped';
+        return 'success';
+    }
+    getTestCaseError(tc) {
+        if (!this.options.parseErrors || !tc.failure) {
+            return undefined;
+        }
+        const details = tc.failure[0];
+        let path;
+        let line;
+        const src = (0, node_utils_1.getExceptionSource)(details, this.options.trackedFiles, file => this.getRelativePath(file));
+        if (src) {
+            path = src.path;
+            line = src.line;
+        }
+        return {
+            path,
+            line,
+            details
+        };
+    }
+    getRelativePath(path) {
+        path = (0, path_utils_1.normalizeFilePath)(path);
+        const workDir = this.getWorkDir(path);
+        if (workDir !== undefined && path.startsWith(workDir)) {
+            path = path.substr(workDir.length);
+        }
+        return path;
+    }
+    getWorkDir(path) {
+        var _a, _b;
+        return ((_b = (_a = this.options.workDir) !== null && _a !== void 0 ? _a : this.assumedWorkDir) !== null && _b !== void 0 ? _b : (this.assumedWorkDir = (0, path_utils_1.getBasePath)(path, this.options.trackedFiles)));
+    }
+}
+exports.CtestJunitParser = CtestJunitParser;
 
 
 /***/ }),
@@ -4098,8 +4218,9 @@ exports.context = new Context.Context();
  * @param     token    the repo PAT or GITHUB_TOKEN
  * @param     options  other options to set
  */
-function getOctokit(token, options) {
-    return new utils_1.GitHub(utils_1.getOctokitOptions(token, options));
+function getOctokit(token, options, ...additionalPlugins) {
+    const GitHubWithPlugins = utils_1.GitHub.plugin(...additionalPlugins);
+    return new GitHubWithPlugins(utils_1.getOctokitOptions(token, options));
 }
 exports.getOctokit = getOctokit;
 //# sourceMappingURL=github.js.map
@@ -4181,7 +4302,7 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.getOctokitOptions = exports.GitHub = exports.context = void 0;
+exports.getOctokitOptions = exports.GitHub = exports.defaults = exports.context = void 0;
 const Context = __importStar(__nccwpck_require__(4087));
 const Utils = __importStar(__nccwpck_require__(7914));
 // octokit + plugins
@@ -4190,13 +4311,13 @@ const plugin_rest_endpoint_methods_1 = __nccwpck_require__(3044);
 const plugin_paginate_rest_1 = __nccwpck_require__(4193);
 exports.context = new Context.Context();
 const baseUrl = Utils.getApiBaseUrl();
-const defaults = {
+exports.defaults = {
     baseUrl,
     request: {
         agent: Utils.getProxyAgent(baseUrl)
     }
 };
-exports.GitHub = core_1.Octokit.plugin(plugin_rest_endpoint_methods_1.restEndpointMethods, plugin_paginate_rest_1.paginateRest).defaults(defaults);
+exports.GitHub = core_1.Octokit.plugin(plugin_rest_endpoint_methods_1.restEndpointMethods, plugin_paginate_rest_1.paginateRest).defaults(exports.defaults);
 /**
  * Convience function to correctly format Octokit Options to pass into the constructor.
  *

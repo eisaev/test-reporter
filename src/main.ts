@@ -10,6 +10,7 @@ import {TestRunResult} from './test-results'
 import {getAnnotations} from './report/get-annotations'
 import {getReport} from './report/get-report'
 
+import {CtestJunitParser} from './parsers/ctest-junit/ctest-junit-parser'
 import {DartJsonParser} from './parsers/dart-json/dart-json-parser'
 import {DotnetTrxParser} from './parsers/dotnet-trx/dotnet-trx-parser'
 import {JavaJunitParser} from './parsers/java-junit/java-junit-parser'
@@ -204,6 +205,8 @@ class TestReporter {
 
   getParser(reporter: string, options: ParseOptions): TestParser {
     switch (reporter) {
+      case 'ctest-junit':
+        return new CtestJunitParser(options)
       case 'dart-json':
         return new DartJsonParser(options, 'dart')
       case 'dotnet-trx':

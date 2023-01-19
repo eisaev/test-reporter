@@ -25,6 +25,7 @@ inputs:
   reporter:
     description: |
       Format of test results. Supported options:
+        - ctest-junit
         - dart-json
         - dotnet-trx
         - flutter-json
